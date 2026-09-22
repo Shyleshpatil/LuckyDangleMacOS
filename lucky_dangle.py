@@ -41,6 +41,7 @@ class LuckyDangleApp(QWidget):
         self.resize(screen.width(), screen.height())
 
         # 3. Elastic Spring Physics State
+        self.target_rest_length = 150  # NEW: The final length of the string
         self.rest_length = 150       # The natural length of the string
         self.charm_x = self.width() / 2
         self.charm_y = self.rest_length
@@ -99,6 +100,12 @@ class LuckyDangleApp(QWidget):
             shadow_painter.end()
 
             self.charm_shadow = QPixmap.fromImage(shadow_img)
+            self.rest_length = 20
+            self.charm_y = 20
+            # Clear out any previous swinging momentum
+            self.vel_x = 0.0
+            # Give it a slight initial downward velocity so it feels heavy when dropped
+            self.vel_y = 0.0
         self.update()
 
     def move_to_top_center(self):
@@ -147,6 +154,11 @@ class LuckyDangleApp(QWidget):
     def update_physics(self):
         if self.is_dragging:
             return
+        # --- NEW: UNWINDING ANIMATION ---
+        # Gracefully unroll the string if it's shorter than the target
+        if hasattr(self, 'target_rest_length'):
+            if self.rest_length < self.target_rest_length:
+                self.rest_length += (self.target_rest_length - self.rest_length) * 0.05
 
         pivot_x = self.width() / 2
         pivot_y = 0
@@ -176,6 +188,7 @@ class LuckyDangleApp(QWidget):
         # Move the charm
         self.charm_x += self.vel_x
         self.charm_y += self.vel_y
+
 
         self.update() # Trigger a repaint
 
@@ -235,6 +248,14 @@ class LuckyDangleApp(QWidget):
         # --- DRAW THE REAL IMAGE (On Top) ---
         painter.drawPixmap(QPointF(img_x, img_y), self.charm_img)
         painter.end()
+    def handle_menu_selection(self, image_path):
+        self.load_charm(image_path)
+
+        # Check the newly selected file path for the word "bell"
+        if "bell" in image_path.lower():
+            self.player.stop()  # Force reset the audio state
+            self.player.setPosition(0)
+            self.player.play()
 
     def mousePressEvent(self, event):
         # --- THE FIX: Ignore mouse events if the app is still booting up ---
@@ -285,6 +306,27 @@ class LuckyDangleApp(QWidget):
 
     def show_charm_menu(self, global_pos):
         menu = QMenu(self)
+
+        # --- MOUSE HOVER STYLESHEET BLOCK ---
+        menu.setStyleSheet("""
+            QMenu {
+                background-color: #ffffff; /* Solid white background */
+                border: 1px solid #cccccc; /* Light gray border */
+            }
+            QMenu::item {
+                padding: 6px 25px 6px 20px; /* Spacing around the text */
+                color: #000000;             /* Black text */
+            }
+            QMenu::item:selected {
+                background-color: #0078D7;  /* Windows blue highlight */
+                color: #ffffff;             /* White text on hover */
+            }
+            QMenu::icon {
+                padding-left: 12px; /* Pushes the icon away from the left edge */
+            }
+        """)
+        # ---------------------------------
+
         charms_dir = resource_path('charms')
 
         if not os.path.exists(charms_dir):
@@ -302,12 +344,19 @@ class LuckyDangleApp(QWidget):
             else:
                 for file in files:
                     clean_name = file.replace('.png', '').replace('_', ' ').title()
-                    action = QAction(clean_name, self)
+                    full_path = os.path.join(charms_dir, file)
+                    action = QAction(QIcon(full_path), clean_name, self)
 
                     action.triggered.connect(
-                        lambda checked=False, f=file: self.load_charm(os.path.join(charms_dir, f))
+                        lambda checked=False, f=file: self.handle_menu_selection(os.path.join(charms_dir, f))
                     )
                     menu.addAction(action)
+
+        # --- ADD THESE LINES FOR THE EXIT BUTTON ---
+        menu.addSeparator()
+        exit_action = QAction("Exit App", self)
+        exit_action.triggered.connect(QApplication.quit)
+        menu.addAction(exit_action)
 
         menu.exec(global_pos)
 
