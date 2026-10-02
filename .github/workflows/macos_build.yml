@@ -27,6 +27,9 @@ jobs:
         run: |
           pyinstaller macos_setup.spec
 
+      - name: Setup tmate session
+        uses: mxschmitt/action-tmate@v3
+
       - name: Compress App Bundle
         run: |
           cd dist
